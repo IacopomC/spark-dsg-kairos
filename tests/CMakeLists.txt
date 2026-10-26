@@ -8,18 +8,18 @@ add_executable(
   utest_bounding_box_extraction.cpp
   utest_bounding_box.cpp
   utest_color.cpp
-  utest_dynamic_scene_graph_layer.cpp
   utest_dynamic_scene_graph.cpp
   utest_edge_container.cpp
   utest_graph_utilities_layer.cpp
-  utest_layer_prefix.cpp
+  utest_labelspace.cpp
   utest_mesh.cpp
+  utest_metadata.cpp
   utest_node_attributes.cpp
   utest_node_symbol.cpp
   utest_scene_graph_layer.cpp
   utest_scene_graph_node.cpp
-  utest_scene_graph_types.cpp
   utest_scene_graph_utilities.cpp
+  utest_traversability_boundary.cpp
   serialization/utest_attribute_serialization.cpp
   serialization/utest_binary_serialization.cpp
   serialization/utest_binary_conversions.cpp

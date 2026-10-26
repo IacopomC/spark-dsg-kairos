@@ -35,6 +35,7 @@
 #pragma once
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <string>
 
 /**
@@ -42,9 +43,14 @@
  */
 namespace spark_dsg {
 
-using NodeId = uint64_t;   //!< Node label
-using LayerId = uint64_t;  //!< Layer label
+//! Node ID representation
+using NodeId = uint64_t;
+//! Layer ID representation
+using LayerId = int64_t;
+//! Partition ID within layer. 0 is reserved for the primary partition
+using PartitionId = uint32_t;
 
+//! Key type for edges
 struct EdgeKey {
   EdgeKey(NodeId k1, NodeId k2);
   bool operator==(const EdgeKey& other) const;
@@ -54,25 +60,45 @@ struct EdgeKey {
   NodeId k2;
 };
 
-/**
- * @brief Layer enum hierarchy corresponding to original DSG paper(s)
- * @note A higher layer id corresponds to parents for interlayer edges
- */
-struct DsgLayers {
-  inline const static LayerId SEGMENTS = 1;  //< Pre-Object node layer (static)
-  inline const static LayerId OBJECTS = 2;   //< Object node layer (static)
-  inline const static LayerId AGENTS = 2;    //< Agents layer (dynamic)
-  inline const static LayerId PLACES = 3;  //< Places node layer (as well as structure)
-  inline const static LayerId STRUCTURE = 3;  //< Struct node layer (as well as places)
-  inline const static LayerId ARCHETYPES = 4;  //< Flow archetype node layer
-  inline const static LayerId ROOMS = 5;      //< Room node layer
-  inline const static LayerId BUILDINGS = 6;  //< Building node layer
-  inline const static LayerId MESH_PLACES = 20;  //< Mesh (2D) Places node layer
-  inline const static LayerId UNKNOWN =
-      std::numeric_limits<LayerId>::max();  //< Catchall layer ID
+//! Layer key specifying primary layer and optional partition
+struct LayerKey {
+  LayerId layer = 0;
+  uint32_t partition = 0;
 
-  static std::string LayerIdToString(LayerId id);
-  static LayerId StringToLayerId(const std::string& id_str);
+  LayerKey() = default;
+  LayerKey(LayerId layer);
+  LayerKey(LayerId layer, PartitionId partition);
+  bool isParentOf(const LayerKey& other) const;
+  bool operator==(const LayerKey& other) const;
+  inline bool operator!=(const LayerKey& other) const {
+    return !this->operator==(other);
+  }
+  bool operator<(const LayerKey& other) const;
+};
+
+//! @brief Common layer names
+struct DsgLayers {
+  //! Pre-Object node layer (static)
+  inline constexpr static const char* SEGMENTS = "SEGMENTS";
+  //! Object node layer (static)
+  inline constexpr static const char* OBJECTS = "OBJECTS";
+  //! Agents layer (dynamic)
+  inline constexpr static const char* AGENTS = "AGENTS";
+  //! Places node layer
+  inline constexpr static const char* PLACES = "PLACES";
+  //! Mesh (2D) Places node layer
+  inline constexpr static const char* MESH_PLACES = "MESH_PLACES";
+  //! Traversability node layer
+  inline constexpr static const char* TRAVERSABILITY = "TRAVERSABILITY";
+  //! Flow archetype node layer
+  inline constexpr static const char* ARCHETYPES = "ARCHETYPES";
+  //! Room node layer
+  inline constexpr static const char* ROOMS = "ROOMS";
+  //! Building node layer
+  inline constexpr static const char* BUILDINGS = "BUILDINGS";
+
+  //! Get default layer ID for each layer name
+  static std::optional<LayerKey> nameToLayerId(const std::string& name);
 };
 
 namespace graph_utilities {

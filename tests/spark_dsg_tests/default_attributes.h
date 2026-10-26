@@ -47,6 +47,23 @@ inline RoomNodeAttributes getRoomNodeAttributes() {
   return expected;
 }
 
+inline ArchetypeNodeAttributes getArchetypeNodeAttributes() {
+  ArchetypeNodeAttributes expected;
+  expected.position << 1.0, 2.0, 3.0;
+  expected.name = "archetype_attributes";
+  expected.color = Color(4, 5, 6);
+  expected.bounding_box.type = BoundingBox::Type::AABB;
+  expected.bounding_box.world_P_center << 7.0f, 8.0f, 9.0f;
+  expected.bounding_box.dimensions << 10.0f, 11.0f, 12.0f;
+  expected.semantic_label = 13;
+  expected.archetype_type = ArchetypeType::BIMODAL;
+  expected.member_count = 14;
+  expected.confidence = 0.75;
+  expected.dominant_thetas = {0.5, -2.5};
+  expected.dominant_rhos = {1.2, 0.9};
+  return expected;
+}
+
 inline PlaceNodeAttributes getPlaceNodeAttributes() {
   PlaceNodeAttributes expected;
   expected.position << 1.0, 2.0, 3.0;

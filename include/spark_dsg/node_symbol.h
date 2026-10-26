@@ -77,7 +77,10 @@ class NodeSymbol {
   NodeSymbol operator++(int);
 
   //! get a string representation of the symbol
-  std::string getLabel() const;
+  [[deprecated("use str() instead")]] std::string getLabel() const;
+
+  //! get a string representation of the symbol
+  std::string str(bool literal = false) const;
 
   /**
    * @brief output node symbol information
@@ -90,10 +93,12 @@ class NodeSymbol {
  private:
   union {
     NodeId value;
-    struct __attribute__((packed)) {
+#pragma pack(push, 1)
+    struct {
       NodeId index : 56;
       char key : 8;
     } symbol;
+#pragma pack(pop)
   } value_;
 };
 

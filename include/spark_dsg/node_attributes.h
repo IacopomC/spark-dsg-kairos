@@ -38,7 +38,6 @@
 #include <list>
 #include <map>
 #include <memory>
-#include <nlohmann/json.hpp>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -46,6 +45,7 @@
 #include "spark_dsg/bounding_box.h"
 #include "spark_dsg/color.h"
 #include "spark_dsg/mesh.h"
+#include "spark_dsg/metadata.h"
 #include "spark_dsg/scene_graph_types.h"
 #include "spark_dsg/serialization/attribute_registry.h"
 
@@ -106,6 +106,8 @@ struct NodeAttributes {
   virtual ~NodeAttributes() = default;
   virtual NodeAttributes::Ptr clone() const;
 
+  virtual void transform(const Eigen::Isometry3d& transform);
+
   //! Position of the node
   Eigen::Vector3d position;
   //! last time the place was updated (while active)
@@ -115,7 +117,7 @@ struct NodeAttributes {
   //! whether the node was observed by Hydra, or added as a prediction
   bool is_predicted;
   //! Arbitrary node metadata
-  nlohmann::json metadata;
+  Metadata metadata;
 
   /**
    * @brief output attribute information
@@ -167,6 +169,7 @@ struct SemanticNodeAttributes : public NodeAttributes {
   SemanticNodeAttributes();
   virtual ~SemanticNodeAttributes() = default;
   NodeAttributes::Ptr clone() const override;
+  void transform(const Eigen::Isometry3d& transform) override;
 
   bool hasLabel() const;
   bool hasFeature() const;
@@ -207,6 +210,7 @@ struct ObjectNodeAttributes : public SemanticNodeAttributes {
   ObjectNodeAttributes();
   virtual ~ObjectNodeAttributes() = default;
   NodeAttributes::Ptr clone() const override;
+  void transform(const Eigen::Isometry3d& transform) override;
 
   //! Mesh vertice connections
   std::list<size_t> mesh_connections;
@@ -268,6 +272,7 @@ enum class ArchetypeType : uint8_t {
 struct ArchetypeNodeAttributes : public SemanticNodeAttributes {
  public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+  //! desired pointer type of node
   using Ptr = std::unique_ptr<ArchetypeNodeAttributes>;
 
   ArchetypeNodeAttributes();
@@ -289,6 +294,7 @@ struct ArchetypeNodeAttributes : public SemanticNodeAttributes {
   std::ostream& fill_ostream(std::ostream& out) const override;
   void serialization_info() override;
   bool is_equal(const NodeAttributes& other) const override;
+  // registers derived attributes
   REGISTER_NODE_ATTRIBUTES(ArchetypeNodeAttributes);
 };
 
@@ -331,6 +337,7 @@ struct PlaceNodeAttributes : public SemanticNodeAttributes {
   bool real_place = true;
   bool need_cleanup = false;
   bool active_frontier = false;
+  bool anti_frontier = false;
   Eigen::Vector3d frontier_scale;
   Eigen::Quaterniond orientation;
   size_t num_frontier_voxels = 0;
@@ -408,12 +415,15 @@ struct AgentNodeAttributes : public NodeAttributes {
   using BowIdVector = Eigen::Matrix<uint32_t, Eigen::Dynamic, 1>;
 
   AgentNodeAttributes();
-  AgentNodeAttributes(const Eigen::Quaterniond& world_R_body,
+  AgentNodeAttributes(std::chrono::nanoseconds timestamp,
+                      const Eigen::Quaterniond& world_R_body,
                       const Eigen::Vector3d& world_P_body,
                       NodeId external_key);
   virtual ~AgentNodeAttributes() = default;
   NodeAttributes::Ptr clone() const override;
+  void transform(const Eigen::Isometry3d& transform) override;
 
+  std::chrono::nanoseconds timestamp;
   Eigen::Quaterniond world_R_body;
   NodeId external_key;
   BowIdVector dbow_ids;
@@ -466,6 +476,67 @@ struct KhronosObjectAttributes : public ObjectNodeAttributes {
   bool is_equal(const NodeAttributes& other) const override;
   // registers derived attributes
   REGISTER_NODE_ATTRIBUTES(KhronosObjectAttributes);
+};
+
+/**
+ * @brief The traversability state of a traversability boundary.
+ */
+enum class TraversabilityState : uint8_t {
+  UNKNOWN = 0,
+  TRAVERSABLE = 1,
+  INTRAVERSABLE = 2,
+  TRAVERSED = 3
+};
+
+using TraversabilityStates = std::vector<TraversabilityState>;
+
+/**
+ * @brief Compact information to store a grid aligned traversability boundary.
+ */
+struct BoundaryInfo {
+  //! Coordinates of the boundary w.r.t. the attribute center.
+  Eigen::Vector2d min;
+  Eigen::Vector2d max;
+
+  //! Traversability states for each side of the boundary. Each side can be empty
+  //! (=UNKNOWN), a single state, or a sequence of states indicating uniform
+  //! tessellation of the boundary. The sides are ordered bottom, left, top, right.
+  //! The states per side are ordered from the lower to the higher coordinate.
+  std::array<TraversabilityStates, 4> states;
+
+  bool operator==(const BoundaryInfo& other) const;
+  bool operator!=(const BoundaryInfo& other) const { return !(*this == other); }
+};
+
+/**
+ * @brief First simple implementation of traversability places.
+ */
+struct TraversabilityNodeAttributes : public NodeAttributes {
+ public:
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+  using Ptr = std::unique_ptr<TraversabilityNodeAttributes>;
+
+  TraversabilityNodeAttributes() = default;
+  virtual ~TraversabilityNodeAttributes() = default;
+  NodeAttributes::Ptr clone() const override;
+
+  //! Timestamps when this place was first and last observed.
+  uint64_t first_observed_ns = 0;
+  uint64_t last_observed_ns = 0;
+
+  //! Boundary information
+  BoundaryInfo boundary;
+
+  // TODO(lschmid): Reconsider in the future.
+  //! Distance to the nearest intraversable obstacle.
+  double distance = 0.0;
+
+ protected:
+  std::ostream& fill_ostream(std::ostream& out) const override;
+  void serialization_info() override;
+  bool is_equal(const NodeAttributes& other) const override;
+
+  REGISTER_NODE_ATTRIBUTES(TraversabilityNodeAttributes);
 };
 
 }  // namespace spark_dsg

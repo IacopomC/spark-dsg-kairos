@@ -35,6 +35,7 @@
 #pragma once
 
 #include <Eigen/Core>
+#include <chrono>
 #include <nlohmann/json.hpp>
 
 namespace spark_dsg {
@@ -42,6 +43,10 @@ namespace spark_dsg {
 struct BoundingBox;
 void to_json(nlohmann::json& j, const BoundingBox& b);
 void from_json(const nlohmann::json& j, BoundingBox& b);
+
+struct LayerKey;
+void to_json(nlohmann::json& j, const LayerKey& key);
+void from_json(const nlohmann::json& j, LayerKey& key);
 
 struct NearestVertexInfo;
 void to_json(nlohmann::json& j, const NearestVertexInfo& b);
@@ -133,6 +138,18 @@ struct adl_serializer<Eigen::Quaternion<Scalar>> {
                                   j.at("x").get<Scalar>(),
                                   j.at("y").get<Scalar>(),
                                   j.at("z").get<Scalar>());
+  }
+};
+
+template <typename Rep, typename Period>
+struct adl_serializer<std::chrono::duration<Rep, Period>> {
+  static void to_json(json& j, const std::chrono::duration<Rep, Period>& duration) {
+    j = std::chrono::nanoseconds(duration).count();
+  }
+
+  static void from_json(const json& j, std::chrono::duration<Rep, Period>& duration) {
+    const auto stamp_ns = j.get<int64_t>();
+    duration = std::chrono::nanoseconds(stamp_ns);
   }
 };
 

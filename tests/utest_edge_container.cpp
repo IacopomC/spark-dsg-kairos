@@ -33,8 +33,8 @@
  * purposes notwithstanding any copyright notation herein.
  * -------------------------------------------------------------------------- */
 #include <gtest/gtest.h>
-#include <spark_dsg/edge_container.h>
 #include <spark_dsg/edge_attributes.h>
+#include <spark_dsg/edge_container.h>
 
 namespace spark_dsg {
 
@@ -172,6 +172,19 @@ TEST(EdgeContainerTests, StaleInvariants) {
   for (const auto& key_info_pair : container.stale_edges) {
     EXPECT_EQ(key_info_pair.first.k2 >= 6, key_info_pair.second);
   }
+}
+
+TEST(EdgeContainerTests, RemoveUntrackedEdgeIsNoop) {
+  EdgeContainer container;
+  container.insert(0, 1, nullptr);
+
+  // removing an edge that was never inserted leaves the container unchanged
+  container.remove(2, 3);
+  EXPECT_EQ(1u, container.size());
+
+  std::vector<EdgeKey> result;
+  container.getRemoved(result, false);
+  EXPECT_TRUE(result.empty());
 }
 
 }  // namespace spark_dsg

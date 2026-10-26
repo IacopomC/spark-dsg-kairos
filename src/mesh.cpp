@@ -217,13 +217,14 @@ void Mesh::eraseVertices(const std::unordered_set<size_t>& indices) {
 void Mesh::eraseFaces(const std::unordered_set<size_t>& indices,
                       const bool update_vertices) {
   Faces new_faces;
-  new_faces.reserve(numFaces() - indices.size());
+  new_faces.reserve(numFaces());
   for (size_t old_index = 0; old_index < numFaces(); ++old_index) {
     if (!indices.count(old_index)) {
       new_faces.push_back(faces[old_index]);
     }
   }
   faces = std::move(new_faces);
+  faces.resize(faces.size());
 
   if (!update_vertices) {
     return;
@@ -274,6 +275,16 @@ bool Mesh::append(const Mesh& other) {
 Mesh& Mesh::operator+=(const Mesh& other) {
   append(other);
   return *this;
+}
+
+size_t Mesh::totalBytes() const {
+  const auto point_bytes = 3 * sizeof(float) * points.size();
+  const auto color_bytes = sizeof(Color) * colors.size();
+  const auto stamp_bytes =
+      sizeof(Timestamp) * (stamps.size() + first_seen_stamps.size());
+  const auto label_bytes = sizeof(Label) * labels.size();
+  const auto face_bytes = 3 * sizeof(uint64_t) * faces.size();
+  return point_bytes + color_bytes + stamp_bytes + label_bytes + face_bytes;
 }
 
 bool operator==(const Mesh& lhs, const Mesh& rhs) {

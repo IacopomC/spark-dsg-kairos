@@ -113,6 +113,10 @@ NodeAttributes::Ptr NodeAttributes::clone() const {
   return std::make_unique<NodeAttributes>(*this);
 }
 
+void NodeAttributes::transform(const Eigen::Isometry3d& transform) {
+  position = transform * position;
+}
+
 bool NodeAttributes::operator==(const NodeAttributes& other) const {
   return is_equal(other);
 }
@@ -123,7 +127,7 @@ std::ostream& NodeAttributes::fill_ostream(std::ostream& out) const {
   out << "  - last update time: "
       << (last_update_time_ns == 0 ? "n/a" : std::to_string(last_update_time_ns))
       << "\n";
-  out << std::boolalpha << "  - is_active: " << is_active;
+  out << std::boolalpha << "  - is_active: " << is_active << "\n";
   out << std::boolalpha << "  - is_predicted: " << is_predicted;
   return out;
 }
@@ -160,6 +164,11 @@ NodeAttributes::Ptr SemanticNodeAttributes::clone() const {
   return std::make_unique<SemanticNodeAttributes>(*this);
 }
 
+void SemanticNodeAttributes::transform(const Eigen::Isometry3d& transform) {
+  NodeAttributes::transform(transform);
+  bounding_box.transform(transform);
+}
+
 bool SemanticNodeAttributes::hasLabel() const {
   return semantic_label != NO_SEMANTIC_LABEL;
 }
@@ -184,16 +193,20 @@ void SemanticNodeAttributes::serialization_info() {
   serialization::field("name", name);
   const auto& header = io::GlobalInfo::loadedHeader();
   if (header.version <= io::Version(1, 0, 2)) {
+    io::warnOutdatedHeader(header);
+
     Eigen::Matrix<uint8_t, 3, 1> color_uint8;
     serialization::field("color", color_uint8);
     color = Color(color_uint8[0], color_uint8[1], color_uint8[2]);
-    io::warnOutdatedHeader(header);
   } else {
     serialization::field("color", color);
   }
+
   serialization::field("bounding_box", bounding_box);
   serialization::field("semantic_label", semantic_label);
   if (header.version <= io::Version(1, 0, 4)) {
+    io::warnOutdatedHeader(header);
+
     Eigen::MatrixXd feature;
     serialization::field("semantic_feature", feature);
     semantic_feature = feature.cast<float>();
@@ -225,6 +238,12 @@ ObjectNodeAttributes::ObjectNodeAttributes()
 
 NodeAttributes::Ptr ObjectNodeAttributes::clone() const {
   return std::make_unique<ObjectNodeAttributes>(*this);
+}
+
+void ObjectNodeAttributes::transform(const Eigen::Isometry3d& transform) {
+  SemanticNodeAttributes::transform(transform);
+  world_R_object =
+      Eigen::Quaterniond(transform.linear() * world_R_object.toRotationMatrix());
 }
 
 std::ostream& ObjectNodeAttributes::fill_ostream(std::ostream& out) const {
@@ -305,8 +324,14 @@ std::ostream& ArchetypeNodeAttributes::fill_ostream(std::ostream& out) const {
 
 void ArchetypeNodeAttributes::serialization_info() {
   SemanticNodeAttributes::serialization_info();
+  // Workaround for enum serialization.
+  auto type = static_cast<uint8_t>(archetype_type);
+  serialization::field("archetype_type", type);
+  archetype_type = static_cast<ArchetypeType>(type);
   serialization::field("member_count", member_count);
   serialization::field("confidence", confidence);
+  serialization::field("dominant_thetas", dominant_thetas);
+  serialization::field("dominant_rhos", dominant_rhos);
 }
 
 bool ArchetypeNodeAttributes::is_equal(const NodeAttributes& other) const {
@@ -320,8 +345,7 @@ bool ArchetypeNodeAttributes::is_equal(const NodeAttributes& other) const {
   }
 
   return archetype_type == derived->archetype_type &&
-         member_count == derived->member_count &&
-         confidence == derived->confidence &&
+         member_count == derived->member_count && confidence == derived->confidence &&
          dominant_thetas == derived->dominant_thetas &&
          dominant_rhos == derived->dominant_rhos;
 }
@@ -346,6 +370,7 @@ std::ostream& PlaceNodeAttributes::fill_ostream(std::ostream& out) const {
   out << std::boolalpha << "\n  - real place: " << real_place;
   out << std::boolalpha << "\n  - need cleanup: " << need_cleanup;
   out << std::boolalpha << "\n  - active frontier: " << active_frontier;
+  out << std::boolalpha << "\n  - anti frontier: " << active_frontier;
   out << "\n  - num frontier voxels: " << num_frontier_voxels;
   return out;
 }
@@ -364,6 +389,12 @@ void PlaceNodeAttributes::serialization_info() {
   serialization::field("orientation", orientation);
   serialization::field("need_cleanup", need_cleanup);
   serialization::field("num_frontier_voxels", num_frontier_voxels);
+  const auto& header = io::GlobalInfo::loadedHeader();
+  if (header.version < io::Version(1, 1, 3)) {
+    io::warnOutdatedHeader(header);
+  } else {
+    serialization::field("anti_frontier", anti_frontier);
+  }
 }
 
 bool PlaceNodeAttributes::is_equal(const NodeAttributes& other) const {
@@ -384,6 +415,7 @@ bool PlaceNodeAttributes::is_equal(const NodeAttributes& other) const {
          deformation_connections == derived->deformation_connections &&
          real_place == derived->real_place &&
          active_frontier == derived->active_frontier &&
+         anti_frontier == derived->anti_frontier &&
          frontier_scale == derived->frontier_scale &&
          quaternionsEqual(orientation, derived->orientation) &&
          need_cleanup == derived->need_cleanup &&
@@ -450,17 +482,24 @@ bool Place2dNodeAttributes::is_equal(const NodeAttributes& other) const {
          has_active_mesh_indices == derived->has_active_mesh_indices;
 }
 
-AgentNodeAttributes::AgentNodeAttributes() : NodeAttributes() {}
+AgentNodeAttributes::AgentNodeAttributes() : NodeAttributes(), timestamp(0) {}
 
-AgentNodeAttributes::AgentNodeAttributes(const Eigen::Quaterniond& world_R_body,
+AgentNodeAttributes::AgentNodeAttributes(std::chrono::nanoseconds timestamp,
+                                         const Eigen::Quaterniond& world_R_body,
                                          const Eigen::Vector3d& world_P_body,
                                          NodeId external_key)
     : NodeAttributes(world_P_body),
+      timestamp(timestamp),
       world_R_body(world_R_body),
       external_key(external_key) {}
 
 NodeAttributes::Ptr AgentNodeAttributes::clone() const {
   return std::make_unique<AgentNodeAttributes>(*this);
+}
+
+void AgentNodeAttributes::transform(const Eigen::Isometry3d& transform) {
+  NodeAttributes::transform(transform);
+  world_R_body = transform.linear() * world_R_body;
 }
 
 std::ostream& AgentNodeAttributes::fill_ostream(std::ostream& out) const {
@@ -471,6 +510,14 @@ std::ostream& AgentNodeAttributes::fill_ostream(std::ostream& out) const {
 
 void AgentNodeAttributes::serialization_info() {
   NodeAttributes::serialization_info();
+
+  const auto& header = io::GlobalInfo::loadedHeader();
+  if (header.version < io::Version(1, 1, 0)) {
+    io::warnOutdatedHeader(header);
+  } else {
+    serialization::field("timestamp", timestamp);
+  }
+
   serialization::field("world_R_body", world_R_body);
   serialization::field("external_key", external_key);
   serialization::field("dbow_ids", dbow_ids);
@@ -487,12 +534,13 @@ bool AgentNodeAttributes::is_equal(const NodeAttributes& other) const {
     return false;
   }
 
-  return quaternionsEqual(world_R_body, derived->world_R_body) &&
+  return timestamp == derived->timestamp &&
+         quaternionsEqual(world_R_body, derived->world_R_body) &&
          external_key == derived->external_key && dbow_ids == derived->dbow_ids &&
          dbow_values == derived->dbow_values;
 }
 
-KhronosObjectAttributes::KhronosObjectAttributes() : mesh(true, false, false){};
+KhronosObjectAttributes::KhronosObjectAttributes() : mesh(true, false, false) {}
 
 NodeAttributes::Ptr KhronosObjectAttributes::clone() const {
   return std::make_unique<KhronosObjectAttributes>(*this);
@@ -514,7 +562,7 @@ std::ostream& KhronosObjectAttributes::fill_ostream(std::ostream& out) const {
 }
 
 void KhronosObjectAttributes::serialization_info() {
-  SemanticNodeAttributes::serialization_info();
+  ObjectNodeAttributes::serialization_info();
   serialization::field("first_observed_ns", first_observed_ns);
   serialization::field("last_observed_ns", last_observed_ns);
   serialization::field("trajectory_positions", trajectory_positions);
@@ -525,6 +573,7 @@ void KhronosObjectAttributes::serialization_info() {
   const auto& header = io::GlobalInfo::loadedHeader();
   if (header.version <= io::Version(1, 0, 1)) {
     io::warnOutdatedHeader(header);
+
     std::vector<float> xyz;
     serialization::field("vertices", xyz);
     std::vector<uint8_t> rgb;
@@ -572,6 +621,62 @@ bool KhronosObjectAttributes::is_equal(const NodeAttributes& other) const {
          trajectory_positions == derived->trajectory_positions &&
          dynamic_object_points == derived->dynamic_object_points &&
          details == derived->details;
+}
+
+bool BoundaryInfo::operator==(const BoundaryInfo& other) const {
+  return min == other.min && max == other.max && states == other.states;
+}
+
+NodeAttributes::Ptr TraversabilityNodeAttributes::clone() const {
+  return std::make_unique<TraversabilityNodeAttributes>(*this);
+}
+
+std::ostream& TraversabilityNodeAttributes::fill_ostream(std::ostream& out) const {
+  NodeAttributes::fill_ostream(out);
+  out << "  - min: " << boundary.min.transpose() << "\n"
+      << "  - max: " << boundary.max.transpose() << "\n"
+      << "  - first_observed_ns: " << first_observed_ns << "\n"
+      << "  - last_observed_ns: " << last_observed_ns << "\n"
+      << "  - distance: " << distance << "\n";
+  return out;
+}
+
+void TraversabilityNodeAttributes::serialization_info() {
+  NodeAttributes::serialization_info();
+  serialization::field("first_observed_ns", first_observed_ns);
+  serialization::field("last_observed_ns", last_observed_ns);
+  serialization::field("distance", distance);
+  serialization::field("min", boundary.min);
+  serialization::field("max", boundary.max);
+  // Workaround for state serialization.
+  for (size_t i = 0; i < 4; ++i) {
+    std::vector<uint8_t> s;
+    s.reserve(boundary.states[i].size());
+    for (const auto& state : boundary.states[i]) {
+      s.push_back(static_cast<uint8_t>(state));
+    }
+    serialization::field("states_" + std::to_string(i), s);
+    boundary.states[i].clear();
+    boundary.states[i].reserve(s.size());
+    for (const auto& state : s) {
+      boundary.states[i].push_back(static_cast<TraversabilityState>(state));
+    }
+  }
+}
+
+bool TraversabilityNodeAttributes::is_equal(const NodeAttributes& other) const {
+  const auto derived = dynamic_cast<const TraversabilityNodeAttributes*>(&other);
+  if (!derived) {
+    return false;
+  }
+
+  if (!NodeAttributes::is_equal(other)) {
+    return false;
+  }
+
+  return boundary == derived->boundary && distance == derived->distance &&
+         first_observed_ns == derived->first_observed_ns &&
+         last_observed_ns == derived->last_observed_ns;
 }
 
 }  // namespace spark_dsg

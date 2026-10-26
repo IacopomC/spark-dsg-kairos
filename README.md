@@ -1,8 +1,6 @@
-[![ubuntu-latest: Build and Test](https://github.com/MIT-SPARK/Spark-DSG/actions/workflows/cmake.yaml/badge.svg)](https://github.com/MIT-SPARK/Spark-DSG/actions/workflows/cmake.yaml)
-[![ROS Noetic: Build and Test](https://github.com/MIT-SPARK/Spark-DSG/actions/workflows/catkin.yaml/badge.svg)](https://github.com/MIT-SPARK/Spark-DSG/actions/workflows/catkin.yaml)
-[![python: Build and Test](https://github.com/MIT-SPARK/Spark-DSG/actions/workflows/python.yaml/badge.svg)](https://github.com/MIT-SPARK/Spark-DSG/actions/workflows/python.yaml)
+[![Spark-DSG Build and Test](https://github.com/MIT-SPARK/Spark-DSG/actions/workflows/ci.yaml/badge.svg)](https://github.com/MIT-SPARK/Spark-DSG/actions/workflows/ci.yaml)
 
-> **Fork note:** This is a fork of [MIT-SPARK Spark-DSG](https://github.com/MIT-SPARK/Spark-DSG), adapted for [KAIROS](https://github.com/IacopomC/kairos). The difference from upstream is one added scene-graph layer: `DsgLayers::ARCHETYPES` (the *flow archetype* node layer, `LayerId 4`) plus its `ArchetypeType` node attributes, which KAIROS uses to represent periodic flow dynamics in the 3D scene graph. Everything else matches upstream.
+> **Fork note:** This is a fork of [MIT-SPARK Spark-DSG](https://github.com/MIT-SPARK/Spark-DSG), adapted for [KAIROS](https://github.com/IacopomC/kairos). It adds the `ArchetypeNodeAttributes` node type (a flow archetype: its `ArchetypeType`, member count, confidence, and dominant headings and speeds) and the `DsgLayers::ARCHETYPES` layer name, both exposed to Python. The layer has no default id; the application sets its position in the graph's layer config. Removing an untracked edge, or an interlayer edge whose node no longer exists, is a no-op instead of an exception. Everything else matches upstream.
 
 ## Spark-DSG
 
@@ -29,7 +27,7 @@ mkdir /path/to/environment
 cd /path/to/environment
 python3 -m venv dsg  # or some other environment name
 
-# you may also want to upgrade pip on 18.04, though it shouldn't be necessary
+# you may also want to upgrade pip, though it shouldn't be necessary
 # source dsg/bin/activate
 # pip install --upgrade pip
 ```
@@ -37,18 +35,15 @@ python3 -m venv dsg  # or some other environment name
   2. Install the python package
 ```bash
 source /path/to/dsg/environment/bin/activate
-
-# you might want to set cmake to use multiple threads
-# export CMAKE_BUILD_PARALLEL_LEVEL=8
-
 git clone git@github.com:MIT-SPARK/Spark-DSG.git
-cd Spark-DSG
-pip install -e .
+pip install ./Spark-DSG
 ```
 
 ### Python Bindings Usage
 
-See [this notebook](notebooks/bindings_demo.py) for some examples for the bindings (you'll want to clone the repo, even if you installed from github).  You'll want to install `jupyter` and `jupytext` if you want to run it as a notebook, though you can also just run it directly as a python script.
+See [this notebook](examples/python_api.py) for some examples for the bindings (you'll want to clone the repo, even if you installed from github).
+You'll want to install `jupyter` and `jupytext` if you want to run it as a notebook, though you can also just run it directly as a python script.
+You can find an example scene graph [here](https://drive.google.com/file/d/1jwcjrE4-6PvOgEgJipETkQaLgC43biFT/view?usp=sharing).
 
 ### Python API documentation
 
@@ -64,4 +59,4 @@ python -m http.server  # to serve them locally
 
 ### Building For ROS
 
-This repository is a valid catkin package and should build if placed in a workspace.
+This repository is a valid ROS package and should build if placed in a workspace.

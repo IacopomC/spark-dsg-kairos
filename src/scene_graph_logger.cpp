@@ -34,35 +34,13 @@
  * -------------------------------------------------------------------------- */
 #include "spark_dsg/scene_graph_logger.h"
 
+#include <filesystem>
 #include <fstream>
-#include <iostream>
+#include <map>
 
 #include "spark_dsg/dynamic_scene_graph.h"
 
 namespace spark_dsg {
-
-void writeStatsToCsv(size_t num_active,
-                     size_t num_removed,
-                     size_t num_merged,
-                     size_t total_parents,
-                     size_t total_with_children,
-                     size_t num_edges,
-                     const std::string& csv_file,
-                     bool write_header) {
-  std::ofstream file;
-  if (write_header) {
-    file.open(csv_file);
-    // file format
-    file << "nodes_active,nodes_removed,nodes_merged,nodes_w_parents,nodes_w_"
-            "children,edges\n";
-  } else {
-    file.open(csv_file, std::ofstream::out | std::ofstream::app);
-  }
-  file << num_active << "," << num_removed << "," << num_merged << "," << total_parents
-       << "," << total_with_children << "," << num_edges << "\n";
-  file.close();
-  return;
-}
 
 SceneGraphLogger::SceneGraphLogger() {}
 
@@ -71,56 +49,55 @@ SceneGraphLogger::~SceneGraphLogger() {}
 void SceneGraphLogger::logGraph(const DynamicSceneGraph& graph) {
   // What I want to log: for each layer, the number of active nodes, number of
   // merged node, number of deleted nodes
-  for (const auto& id_layer : graph.layers_) {
-    if (layer_names_.count(id_layer.first) > 0) {
-      if (id_layer.second->numNodes() == 0 && !write_header_) {
-        continue;
-      }
-      size_t num_active_nodes = 0;
-      size_t num_removed_nodes = 0;
-      size_t num_merged_nodes = 0;
-      size_t num_nodes_with_parents = 0;
-      size_t num_nodes_with_children = 0;
-      for (const auto& id_node_status : id_layer.second->nodes_status_) {
-        switch (id_node_status.second) {
-          case NodeStatus::NEW:
-          case NodeStatus::VISIBLE:
-            num_active_nodes++;
-            if (graph.getNode(id_node_status.first).hasParent()) {
-              num_nodes_with_parents++;
-            }
-            if (graph.getNode(id_node_status.first).hasChildren()) {
-              num_nodes_with_children++;
-            }
-            break;
-          case NodeStatus::DELETED:
-            num_removed_nodes++;
-            break;
-          case NodeStatus::MERGED:
-            num_merged_nodes++;
-            break;
-          case NodeStatus::NONEXISTENT:
-          default:
-            break;
-        }
-      }
-      size_t num_edges = id_layer.second->numEdges();
+  for (const auto& [layer_id, layer] : graph.layers_) {
+    auto iter = layer_entries_.find(layer_id);
+    if (iter == layer_entries_.end()) {
+      iter = layer_entries_.emplace(layer_id, std::vector<Entry>()).first;
+    }
 
-      // Write to file
-      std::string csv_filename =
-          output_dir_ + "/" + layer_names_.at(id_layer.first) + "_layer.csv";
-      writeStatsToCsv(num_active_nodes,
-                      num_removed_nodes,
-                      num_merged_nodes,
-                      num_nodes_with_parents,
-                      num_nodes_with_children,
-                      num_edges,
-                      csv_filename,
-                      write_header_);
+    auto& entry = iter->second.emplace_back();
+    entry.num_edges = layer->numEdges();
+    for (const auto& [node_id, node_status] : layer->nodes_status_) {
+      switch (node_status) {
+        case NodeStatus::NEW:
+        case NodeStatus::VISIBLE:
+          entry.num_active_nodes++;
+          if (graph.getNode(node_id).hasParent()) {
+            entry.num_nodes_with_parents++;
+          }
+          if (graph.getNode(node_id).hasChildren()) {
+            entry.num_nodes_with_children++;
+          }
+          break;
+        case NodeStatus::DELETED:
+          entry.num_removed_nodes++;
+          break;
+        case NodeStatus::MERGED:
+          entry.num_merged_nodes++;
+          break;
+        case NodeStatus::NONEXISTENT:
+        default:
+          break;
+      }
     }
   }
-  write_header_ = false;
-  return;
+}
+
+void SceneGraphLogger::save(const std::string& folder) {
+  const std::filesystem::path output_path(folder);
+  for (const auto& [layer_id, entries] : layer_entries_) {
+    std::string name = "layer_" + std::to_string(layer_id);
+    const auto csv_path = output_path / (name + "_statistics.csv");
+
+    std::ofstream file(csv_path, std::ofstream::out);
+    file << "nodes_active,nodes_removed,nodes_merged,nodes_w_parents,nodes_w_children,"
+            "edges\n";
+    for (const auto& entry : entries) {
+      file << entry.num_active_nodes << "," << entry.num_removed_nodes << ","
+           << entry.num_merged_nodes << "," << entry.num_nodes_with_parents << ","
+           << entry.num_nodes_with_children << "," << entry.num_edges << "\n";
+    }
+  }
 }
 
 }  // namespace spark_dsg
